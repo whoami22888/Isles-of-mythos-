@@ -1,4 +1,148 @@
 #!/usr/bin/env node
-import{readFileSync}from"node:fs";import assert from"node:assert/strict";const expected=[1,50,250,1000];function need(ok,msg){if(!ok)throw Error(msg);}
-export function validateReport(r){need(r?.event==="sustained_load_complete","Missing complete marker");need(Array.isArray(r.scenarios)&&r.scenarios.length===4,"Expected 1/50/250/1000 matrix");for(let i=0;i<4;i++){const p=expected[i],s=r.scenarios[i],w=s?.websocket;need(s?.players===p,"Missing player scenario "+p);need(s.http?.requests===100&&s.http.errors===0,"HTTP failure "+p);need(w?.requestedPlayers===p&&w.connected===p&&w.authenticated===p&&w.errors===0,"WS counts "+p);need(w.pings>0&&w.pongs===w.pings&&w.pingSuccessRate===1,"Ping/pong "+p);for(const[n,v]of[["HTTP p95",s.http.p95Ms],["HTTP p99",s.http.p99Ms],["WS p95",w.p95Ms],["WS p99",w.p99Ms]])need(Number.isFinite(v)&&v>=0,"Missing "+n);need(s.http.p95Ms<=150&&s.http.p99Ms<=300&&w.p95Ms<=150&&w.p99Ms<=300,"Approved gameplay latency SLO exceeded for "+p);need(w.gameplayCraft?.action==="craft"&&w.gameplayCraft.recipeId==="tool.wooden-club"&&typeof w.gameplayCraft.transactionId==="string"&&w.gameplayCraft.transactionId.length>0&&w.gameplayCraft.persisted===true,"Missing persisted gameplayCraft evidence "+p);need(w.gameplayMutation?.action==="gather_resource"&&typeof w.gameplayMutation.resourceId==="string"&&typeof w.gameplayMutation.itemId==="string"&&Number.isInteger(w.gameplayMutation.quantity)&&w.gameplayMutation.quantity>0&&w.gameplayMutation.persisted===true,"Missing persisted gameplayMutation evidence "+p);need(w.networkBytesSent>0&&w.networkBytesReceived>0,"Missing bandwidth "+p);}const d=new Map((r.domainScenarios??[]).map(x=>[x.name,x])),g=d.get("large_guild_battle"),n=d.get("large_naval_battle"),b=d.get("world_boss"),p=d.get("thousands_of_player_bases");need(g?.persisted&&g.participants===500&&g.actions===500&&BigInt(g.attackerScore)>0n&&BigInt(g.defenderScore)>0n,"Missing guild battle evidence");need(n?.persisted&&n.actions===250&&n.eventsPersisted===250&&n.totalDamage>0,"Missing naval battle evidence");need(b?.persisted&&b.contributors===250&&b.contributionsPersisted===250,"Missing world boss evidence");need(p?.persisted&&p.basesPersisted===5000&&p.lookups===50&&Number.isFinite(p.p95Ms)&&Number.isFinite(p.p99Ms),"Missing 5,000 bases evidence");const m=r.serverMetrics;need(Number.isInteger(m?.postgresServerVersion)&&m.postgresServerVersion>=180000&&m.postgresServerVersion<190000,"PostgreSQL 18 server version evidence missing or incompatible");need(Number.isFinite(m?.tickCount)&&m.tickCount>0&&Number.isFinite(m.averageTickMs)&&m.averageTickMs>=0,"Missing server tick evidence");need(Number.isFinite(m.tickP95Ms)&&m.tickP95Ms>=0&&m.tickP95Ms<=40,"Server tick p95 must be <= 40ms");need(Number.isFinite(m.tickP99Ms)&&m.tickP99Ms>=0&&m.tickP99Ms<=50,"Server tick p99 must be <= 50ms");for(const k of["residentMemoryBytes","heapUsedBytes","cpuUserSeconds","cpuSystemSeconds","httpRequestsTotal","httpErrorsTotal","networkBytesSent","networkBytesReceived"])need(Number.isFinite(m?.[k])&&m[k]>=0,"Missing metric "+k);need(r.clientMetrics?.status==="not_measured_in_headless_ci"&&typeof r.clientMetrics.reason==="string","Must disclose device FPS/GPU unmeasured");return true;}
-if(process.argv[2]==="--self-test"){const r={event:"sustained_load_complete",scenarios:expected.map(players=>({players,http:{requests:100,errors:0,p95Ms:1,p99Ms:1},websocket:{requestedPlayers:players,connected:players,authenticated:players,errors:0,pings:1,pongs:1,pingSuccessRate:1,p95Ms:1,p99Ms:1,gameplayCraft:{action:"craft",recipeId:"tool.wooden-club",transactionId:"tx",persisted:true},gameplayMutation:{action:"gather_resource",resourceId:"r",itemId:"resource.wood",quantity:1,persisted:true},networkBytesSent:1,networkBytesReceived:1}})),domainScenarios:[{name:"large_guild_battle",participants:500,actions:500,attackerScore:"1",defenderScore:"1",persisted:true},{name:"large_naval_battle",actions:250,eventsPersisted:250,totalDamage:1,persisted:true},{name:"world_boss",contributors:250,contributionsPersisted:250,persisted:true},{name:"thousands_of_player_bases",basesPersisted:5000,lookups:50,p95Ms:1,p99Ms:1,persisted:true}],serverMetrics:{postgresServerVersion:180006,tickCount:1,averageTickMs:1,tickP95Ms:20,tickP99Ms:40,residentMemoryBytes:1,heapUsedBytes:1,cpuUserSeconds:1,cpuSystemSeconds:1,httpRequestsTotal:1,httpErrorsTotal:0,networkBytesSent:1,networkBytesReceived:1},clientMetrics:{status:"not_measured_in_headless_ci",reason:"device test required"}};assert.equal(validateReport(r),true);const a=structuredClone(r);delete a.scenarios[0].websocket.gameplayCraft;assert.throws(()=>validateReport(a),/gameplayCraft/);const b=structuredClone(r);b.scenarios[0].websocket.gameplayMutation.persisted=false;assert.throws(()=>validateReport(b),/gameplayMutation/);const c=structuredClone(r);c.serverMetrics.tickP95Ms=41;assert.throws(()=>validateReport(c),/tick p95/);const d=structuredClone(r);d.scenarios[0].http.p99Ms=301;assert.throws(()=>validateReport(d),/latency SLO/);console.log("Validator self-test PASS");}else{if(!process.argv[2])throw Error("Usage: node scripts/validate-performance-report.mjs <report.json> | --self-test");validateReport(JSON.parse(readFileSync(process.argv[2],"utf8")));console.log("Performance report PASS");}
+import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+
+const expectedPlayers = [1, 50, 250, 1000];
+function need(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+export function validateReport(report) {
+  need(report?.event === "sustained_load_complete", "Missing complete marker");
+  need(Array.isArray(report.scenarios) && report.scenarios.length === 4, "Expected 1/50/250/1000 matrix");
+
+  for (let index = 0; index < expectedPlayers.length; index++) {
+    const players = expectedPlayers[index];
+    const scenario = report.scenarios[index];
+    const ws = scenario?.websocket;
+    need(scenario?.players === players, "Missing player scenario " + players);
+    need(scenario.http?.endpoint === "world_chunks", "HTTP latency must measure the gameplay world-chunk endpoint for " + players);
+    need(scenario.http?.requests === 100 && scenario.http.errors === 0, "HTTP failure " + players);
+    need(ws?.requestedPlayers === players && ws.connected === players && ws.authenticated === players && ws.errors === 0, "WebSocket counts " + players);
+    need(ws.pings > 0 && ws.pongs === ws.pings && ws.pingSuccessRate === 1, "Ping/pong " + players);
+
+    for (const [name, value] of [
+      ["HTTP p95", scenario.http.p95Ms],
+      ["HTTP p99", scenario.http.p99Ms],
+      ["WebSocket gameplay p95", ws.gameplayP95Ms],
+      ["WebSocket gameplay p99", ws.gameplayP99Ms],
+      ["WebSocket authentication p95", ws.authP95Ms],
+      ["WebSocket authentication p99", ws.authP99Ms],
+      ["WebSocket ping p95", ws.pingP95Ms],
+      ["WebSocket ping p99", ws.pingP99Ms],
+    ]) {
+      need(Number.isFinite(value) && value >= 0, "Missing " + name + " for " + players);
+    }
+
+    const expectedGameplaySamples = Math.min(players, 100) * 2;
+    need(ws.gameplayLatencySamples === expectedGameplaySamples, "Expected " + expectedGameplaySamples + " gameplay latency samples for " + players);
+    need(
+      scenario.http.p95Ms <= 150 && scenario.http.p99Ms <= 300 &&
+      ws.gameplayP95Ms <= 150 && ws.gameplayP99Ms <= 300,
+      "Approved gameplay latency SLO exceeded for " + players,
+    );
+
+    const craft = ws.gameplayCraft;
+    need(
+      craft?.action === "craft" && craft.recipeId === "tool.wooden-club" &&
+      typeof craft.transactionId === "string" && craft.transactionId.length > 0 &&
+      craft.persisted === true && Number.isFinite(craft.latencyMs) && craft.latencyMs >= 0,
+      "Missing persisted gameplayCraft evidence " + players,
+    );
+    const mutation = ws.gameplayMutation;
+    need(
+      mutation?.action === "gather_resource" && typeof mutation.resourceId === "string" &&
+      typeof mutation.itemId === "string" && Number.isInteger(mutation.quantity) &&
+      mutation.quantity > 0 && mutation.persisted === true &&
+      Number.isFinite(mutation.latencyMs) && mutation.latencyMs >= 0,
+      "Missing persisted gameplayMutation evidence " + players,
+    );
+    need(ws.networkBytesSent > 0 && ws.networkBytesReceived > 0, "Missing bandwidth " + players);
+  }
+
+  const domain = new Map((report.domainScenarios ?? []).map(item => [item.name, item]));
+  const guild = domain.get("large_guild_battle");
+  const naval = domain.get("large_naval_battle");
+  const boss = domain.get("world_boss");
+  const bases = domain.get("thousands_of_player_bases");
+  need(guild?.persisted && guild.participants === 500 && guild.actions === 500 &&
+    BigInt(guild.attackerScore) > 0n && BigInt(guild.defenderScore) > 0n, "Missing guild battle evidence");
+  need(naval?.persisted && naval.actions === 250 && naval.eventsPersisted === 250 &&
+    naval.totalDamage > 0, "Missing naval battle evidence");
+  need(boss?.persisted && boss.contributors === 250 && boss.contributionsPersisted === 250, "Missing world boss evidence");
+  need(bases?.persisted && bases.basesPersisted === 5000 && bases.lookups === 50 &&
+    Number.isFinite(bases.p95Ms) && Number.isFinite(bases.p99Ms), "Missing 5,000 bases evidence");
+
+  const metrics = report.serverMetrics;
+  need(Number.isInteger(metrics?.postgresServerVersion) &&
+    metrics.postgresServerVersion >= 180000 && metrics.postgresServerVersion < 190000,
+    "PostgreSQL 18 server version evidence missing or incompatible");
+  need(Number.isFinite(metrics?.tickCount) && metrics.tickCount > 0 &&
+    Number.isFinite(metrics.averageTickMs) && metrics.averageTickMs >= 0, "Missing server tick evidence");
+  need(Number.isFinite(metrics.tickP95Ms) && metrics.tickP95Ms >= 0 && metrics.tickP95Ms <= 40,
+    "Server tick p95 must be <= 40ms");
+  need(Number.isFinite(metrics.tickP99Ms) && metrics.tickP99Ms >= 0 && metrics.tickP99Ms <= 50,
+    "Server tick p99 must be <= 50ms");
+  for (const key of [
+    "residentMemoryBytes", "heapUsedBytes", "cpuUserSeconds", "cpuSystemSeconds",
+    "httpRequestsTotal", "httpErrorsTotal", "networkBytesSent", "networkBytesReceived",
+  ]) {
+    need(Number.isFinite(metrics?.[key]) && metrics[key] >= 0, "Missing metric " + key);
+  }
+  need(report.clientMetrics?.status === "not_measured_in_headless_ci" &&
+    typeof report.clientMetrics.reason === "string", "Must disclose device FPS/GPU unmeasured");
+  return true;
+}
+
+if (process.argv[2] === "--self-test") {
+  const report = {
+    event: "sustained_load_complete",
+    scenarios: expectedPlayers.map(players => ({
+      players,
+      http: { endpoint: "world_chunks", requests: 100, errors: 0, p95Ms: 1, p99Ms: 1 },
+      websocket: {
+        requestedPlayers: players, connected: players, authenticated: players, errors: 0,
+        pings: 1, pongs: 1, pingSuccessRate: 1,
+        gameplayLatencySamples: Math.min(players, 100) * 2,
+        gameplayP95Ms: 1, gameplayP99Ms: 1, authP95Ms: 1, authP99Ms: 1,
+        pingP50Ms: 1, pingP95Ms: 1, pingP99Ms: 1,
+        gameplayCraft: { action: "craft", recipeId: "tool.wooden-club", transactionId: "tx", latencyMs: 1, persisted: true },
+        gameplayMutation: { action: "gather_resource", resourceId: "r", itemId: "resource.wood", quantity: 1, latencyMs: 1, persisted: true },
+        networkBytesSent: 1, networkBytesReceived: 1,
+      },
+    })),
+    domainScenarios: [
+      { name: "large_guild_battle", participants: 500, actions: 500, attackerScore: "1", defenderScore: "1", persisted: true },
+      { name: "large_naval_battle", actions: 250, eventsPersisted: 250, totalDamage: 1, persisted: true },
+      { name: "world_boss", contributors: 250, contributionsPersisted: 250, persisted: true },
+      { name: "thousands_of_player_bases", basesPersisted: 5000, lookups: 50, p95Ms: 1, p99Ms: 1, persisted: true },
+    ],
+    serverMetrics: {
+      postgresServerVersion: 180006, tickCount: 1, averageTickMs: 1, tickP95Ms: 20, tickP99Ms: 40,
+      residentMemoryBytes: 1, heapUsedBytes: 1, cpuUserSeconds: 1, cpuSystemSeconds: 1,
+      httpRequestsTotal: 1, httpErrorsTotal: 0, networkBytesSent: 1, networkBytesReceived: 1,
+    },
+    clientMetrics: { status: "not_measured_in_headless_ci", reason: "device test required" },
+  };
+  assert.equal(validateReport(report), true);
+  const missingCraft = structuredClone(report);
+  delete missingCraft.scenarios[0].websocket.gameplayCraft;
+  assert.throws(() => validateReport(missingCraft), /gameplayCraft/);
+  const missingMutation = structuredClone(report);
+  missingMutation.scenarios[0].websocket.gameplayMutation.persisted = false;
+  assert.throws(() => validateReport(missingMutation), /gameplayMutation/);
+  const badTick = structuredClone(report);
+  badTick.serverMetrics.tickP95Ms = 41;
+  assert.throws(() => validateReport(badTick), /tick p95/);
+  const badHttp = structuredClone(report);
+  badHttp.scenarios[0].http.p99Ms = 301;
+  assert.throws(() => validateReport(badHttp), /latency SLO/);
+  const badGameplay = structuredClone(report);
+  badGameplay.scenarios[0].websocket.gameplayP99Ms = 301;
+  assert.throws(() => validateReport(badGameplay), /latency SLO/);
+  console.log("Validator self-test PASS");
+} else {
+  if (!process.argv[2]) throw new Error("Usage: node scripts/validate-performance-report.mjs <report.json> | --self-test");
+  validateReport(JSON.parse(readFileSync(process.argv[2], "utf8")));
+  console.log("Performance report PASS");
+}
