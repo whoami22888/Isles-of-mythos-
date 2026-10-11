@@ -55,6 +55,7 @@ jobs:
           docker buildx imagetools inspect "$POSTGRES_IMAGE" | tee postgres-image-inspect.txt
           grep -F "Digest: sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7" postgres-image-inspect.txt
           docker pull "$POSTGRES_IMAGE"
+          mkdir -p "$RUNNER_TEMP/bin"
           GOBIN="$RUNNER_TEMP/bin" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.4.1
           COSIGN_IDENTITY="https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main"
           COSIGN_ISSUER="https://token.actions.githubusercontent.com"
