@@ -58,9 +58,14 @@ jobs:
           GOBIN="$RUNNER_TEMP/bin" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.4.1
           COSIGN_IDENTITY="https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main"
           COSIGN_ISSUER="https://token.actions.githubusercontent.com"
-          "$RUNNER_TEMP/bin/cosign" verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_IMAGE" > postgres-signature.json
-          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_IMAGE" > postgres-provenance.json
-          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_IMAGE" > postgres-sbom-attestation.json
+          POSTGRES_AMD64_IMAGE="cgr.dev/chainguard/postgres@sha256:17e9772ea0445f2dba3faee359b571c899b89b0fb09098fc38d390dc73f141c0"
+          POSTGRES_ARM64_IMAGE="cgr.dev/chainguard/postgres@sha256:a18c38fdfbb5f99f636ad01e34ef0a4468832ddc4ea7e3e329720244462d0930"
+          "$RUNNER_TEMP/bin/cosign" verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-signature-amd64.json
+          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-provenance-amd64.json
+          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-sbom-amd64.json
+          "$RUNNER_TEMP/bin/cosign" verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-signature-arm64.json
+          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-provenance-arm64.json
+          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-sbom-arm64.json
       - name: Scan pinned PostgreSQL image and emit CycloneDX SBOM
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
@@ -122,8 +127,11 @@ jobs:
             performance-system.log
             performance-server.log
             postgres-image-inspect.txt
-            postgres-signature.json
-            postgres-provenance.json
-            postgres-sbom-attestation.json
+            postgres-signature-amd64.json
+            postgres-provenance-amd64.json
+            postgres-sbom-amd64.json
+            postgres-signature-arm64.json
+            postgres-provenance-arm64.json
+            postgres-sbom-arm64.json
             postgres.sbom.cdx.json
           if-no-files-found: error
