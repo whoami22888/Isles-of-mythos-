@@ -4,7 +4,7 @@ Revision: 2026-10-12. Applies to Master Build Prompt sections 93–94 and PR #99
 ## Preserve the load matrix
 Retain the existing player matrix: 1, 50, 250 and 1,000 concurrent players. Add, do not substitute:
 - Large guild battle: at least 500 player identities and 500 persisted actions.
-- Large naval battle: at least 250 successful ship-to-ship actions and persisted combat events.
+- Large naval battle: at least 250 successful ship-to-ship actions and persisted combat events. Seed authoritative cannonball inventory for each attacker; require successful ammunition consumption and persisted combat events for all 250 actions.
 - World boss: at least 250 distinct contributors and persisted contributions.
 - Thousands of player bases: at least 5,000 persisted bases and indexed owner lookups with p50/p95/p99 latency.
 
@@ -23,7 +23,7 @@ The previously recorded Docker Official Image digest `sha256:b0f9560a2de083e2cc7
 
 This is PostgreSQL 18.6, a major-version change from PostgreSQL 17. The current image metadata review reports one medium-severity CVE; the exact-digest automated scan remains authoritative. Do not accept the major-version change unless migrations, integration tests, regression tests, backup/restore and all required CI checks pass against this exact image. At runtime, record both `SHOW server_version` and `SHOW server_version_num`; fail unless the numeric version is in `[180000, 190000)`, and retain the version file as a workflow artifact and in the performance report.
 
-Before acceptance, CI must verify the exact registry/index digest and both platform manifest digests; verify the signed image and SLSA provenance using identity `https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main` and issuer `https://token.actions.githubusercontent.com`; verify the signed SPDX SBOM attestation; and run a vulnerability scan that fails on HIGH/CRITICAL findings (unfixed issues excluded). Retain inspection, signature, provenance, SPDX SBOM and generated CycloneDX SBOM/vulnerability artifacts. Review monthly and expedite security updates through a reviewed PR; resolve the new digest and rerun all evidence gates. Never silently move a digest or substitute a tag.
+Before acceptance, CI must verify the exact registry/index digest and assert via the raw OCI index that the expected linux/amd64 and linux/arm64 manifest digests are children of that exact index; verify the signed image and SLSA provenance using identity `https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main` and issuer `https://token.actions.githubusercontent.com`; verify the signed SPDX SBOM attestation; and run a vulnerability scan that fails on HIGH/CRITICAL findings (unfixed issues excluded). Retain inspection, signature, provenance, SPDX SBOM and generated CycloneDX SBOM/vulnerability artifacts. Review monthly and expedite security updates through a reviewed PR; resolve the new digest and rerun all evidence gates. Never silently move a digest or substitute a tag.
 
 ## Merge and recordkeeping
 Reconcile PRs to current main; run CI, Performance Acceptance and Static Security Quality on the exact resulting PR HEAD; obtain independent review and required approval; merge only when repository rules allow; then verify checks on the exact merge commit. Record SHA, run IDs, artifact links, review decision and merge/post-merge SHAs in the Master Project Index. Gates 1–16 remain frozen.
