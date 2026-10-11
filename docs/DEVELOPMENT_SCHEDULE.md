@@ -1,3 +1,14 @@
+## Live PR status — 2026-10-12
+
+Repository main remains \`c500cf7b6cbb967fd92d99bdc33b02536a5d0097\`. The following open PR heads are based on that SHA and are not behind main:
+- PR #99 workflow/performance/security: current head \`e29e6911a2eeb1490f20403c8f7e986e95d2fb7a\`; exact-head checks were restarted after fixes to the scanner, persisted gameplay evidence, artifact completeness and checkout ref. Do not treat queued/in-progress runs as PASS.
+- PR #107 documentation: current head \`1385d6f97506e5f333211ebfab782e1c2224e43e\`; listed checks passed on this head, but no qualifying independent approval is recorded.
+- PR #109 persisted-evidence validator: draft head \`c7056499eb1a94e776ce5c426bce8d9795e38be1\`; listed checks passed, but its validator scope overlaps the stricter evidence validation being incorporated into PR #99. Do not merge both implementations independently without reconciliation.
+- PR #111 endgame pool deadlock: head \`397d35945d341c8bc35374c27bdf163fad8b071a\`; listed checks passed. This fix is required for the full guild-battle load scenario; independent approval is still missing.
+- Temporary integration PR #112 is closed and unmerged. Its integrated HEAD \`b2b17938aee3b0a1a58ad8a7a1d56ccbc0cc3513\` passed the full acceptance chain, including the 1/50/250/1,000 matrix and domain persistence scenarios. That result does not verify later changes on PR #99.
+
+No PR may merge until exact-head required checks, supply-chain evidence, migration deployment records and independent formal approval are complete. Gates 1–16 remain frozen; Step 5 remains blocked.
+
 # Isles of Mythos: Sunken Tides — Development Schedule
 
 
