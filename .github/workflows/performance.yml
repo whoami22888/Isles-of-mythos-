@@ -79,6 +79,8 @@ jobs:
           ) > performance-system.log 2>&1 &
       - name: Run sustained player-load scenarios
         run: node scripts/sustained-load.mjs
+      - name: Validate complete acceptance report
+        run: node scripts/performance-report-validator.mjs
       - name: Stop server
         if: always()
         run: |
