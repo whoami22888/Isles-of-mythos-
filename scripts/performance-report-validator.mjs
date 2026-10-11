@@ -38,8 +38,7 @@ export function validateGameplayEvidence(websocket, players) {
       !Number.isSafeInteger(mutation.persistenceEvidence.inventoryQuantity) ||
       mutation.persistenceEvidence.inventoryQuantity < mutation.quantity ||
       typeof mutation.persistenceEvidence.depletedUntil !== "string" ||
-      !Number.isFinite(Date.parse(mutation.persistenceEvidence.depletedUntil)) ||
-      Date.parse(mutation.persistenceEvidence.depletedUntil) <= Date.now()) {
+      !Number.isFinite(Date.parse(mutation.persistenceEvidence.depletedUntil))) {
     throw new Error("Missing, unsuccessful, or invalid persisted gameplayMutation evidence for " + players + " players");
   }
 }
