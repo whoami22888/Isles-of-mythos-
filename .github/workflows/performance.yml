@@ -67,16 +67,22 @@ jobs:
           "$RUNNER_TEMP/bin/cosign" verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-signature-arm64.json
           "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-provenance-arm64.json
           "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-sbom-arm64.json
-      - name: Scan pinned PostgreSQL image and emit CycloneDX SBOM
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
-        with:
-          image-ref: cgr.dev/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7
-          format: cyclonedx
-          output: postgres.sbom.cdx.json
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
+      - name: Generate CycloneDX SBOM for pinned PostgreSQL image
+        env:
+          POSTGRES_IMAGE: cgr.dev/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -w /work docker.io/aquasec/trivy@sha256:a22415a38938a56c379387a8163fcb0ce38b10ace73e593475d3658d578b2436 image --scanners vuln --format cyclonedx --output postgres.sbom.cdx.json "$POSTGRES_IMAGE"
+      - name: Fail on high or critical PostgreSQL vulnerabilities
+        env:
+          POSTGRES_IMAGE: cgr.dev/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7
+        run: |
+          set -euo pipefail
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -w /work docker.io/aquasec/trivy@sha256:a22415a38938a56c379387a8163fcb0ce38b10ace73e593475d3658d578b2436 image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --format table --output postgres-vulnerability-report.txt --exit-code 1 "$POSTGRES_IMAGE"
+      - name: Print PostgreSQL vulnerability report
+        if: always()
+        run: cat postgres-vulnerability-report.txt || true
       - name: Install dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Rebuild reviewed native dependencies
@@ -135,4 +141,5 @@ jobs:
             postgres-provenance-arm64.json
             postgres-sbom-arm64.json
             postgres.sbom.cdx.json
+            postgres-vulnerability-report.txt
           if-no-files-found: error
