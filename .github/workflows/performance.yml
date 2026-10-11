@@ -89,6 +89,16 @@ jobs:
         run: npm rebuild argon2 esbuild
       - name: Migrate database
         run: npm run migrate:up
+      - name: Assert PostgreSQL 18 server version
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          version_num="$(PGPASSWORD=postgres psql "$DATABASE_URL" -Atc 'SHOW server_version_num')"
+          version_text="$(PGPASSWORD=postgres psql "$DATABASE_URL" -Atc 'SHOW server_version')"
+          printf 'server_version=%s\nserver_version_num=%s\n' "$version_text" "$version_num" | tee postgres-server-version.txt
+          if (( version_num < 180000 || version_num >= 190000 )); then echo "Expected PostgreSQL 18.x, got $version_text ($version_num)" >&2; exit 1; fi
+          echo "POSTGRES_SERVER_VERSION_NUM=$version_num" >> "$GITHUB_ENV"
       - name: Seed 5,000 player identities
         run: PGPASSWORD=postgres psql "$DATABASE_URL" -c "INSERT INTO users (username, email, password_hash) SELECT 'loadtest_' || g, 'loadtest_' || g || '@example.invalid', 'loadtest-password-hash' FROM generate_series(0, 4999) AS g ON CONFLICT DO NOTHING;"
       - name: Build
@@ -134,6 +144,7 @@ jobs:
             performance-system.log
             performance-server.log
             postgres-image-inspect.txt
+            postgres-server-version.txt
             postgres-signature-amd64.json
             postgres-provenance-amd64.json
             postgres-sbom-amd64.json
