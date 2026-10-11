@@ -88,7 +88,7 @@ export function renderPrometheusMetrics(): string {
     `isles_active_players ${activePlayers}`,
     "# HELP isles_tick_duration_seconds Game tick duration distribution in seconds.",
     "# TYPE isles_tick_duration_seconds histogram",
-    ...tickDurationBucketBoundsSeconds.map((bound, index) => 'isles_tick_duration_seconds_bucket{le="' + (Number.isFinite(bound) ? bound : "+Inf") + '\"} ' + tickDurationBucketCounts[index]),
+    ...tickDurationBucketBoundsSeconds.map((bound, index) => 'isles_tick_duration_seconds_bucket{le="' + (Number.isFinite(bound) ? bound : "+Inf") + '"} ' + tickDurationBucketCounts[index]),
     `isles_tick_duration_seconds_sum ${tickDurationSecondsSum}`,
     `isles_tick_duration_seconds_count ${tickDurationSecondsCount}`,
     "# HELP isles_database_up Database connectivity status.",
