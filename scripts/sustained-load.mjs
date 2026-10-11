@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { WebSocket } from "ws";
 import pg from "pg";
+import { generateChunk } from "../server/dist/world.js";
 
 const baseUrl = process.env.LOADTEST_BASE_URL ?? "http://127.0.0.1:3000";
 const wsUrl = `${baseUrl.replace(/^http/, "ws")}/ws`;
@@ -46,11 +47,19 @@ function percentile(values, p) {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)];
 }
 
+// The production API permits 120 requests per minute. Each 100-request
+// HTTP sample must run in a fresh rate-limit window; do not weaken server limits.
+let lastHttpLoadStartedAt;
 async function httpLoad() {
+  if (lastHttpLoadStartedAt !== undefined) {
+    const remainingMs = 60_500 - (performance.now() - lastHttpLoadStartedAt);
+    if (remainingMs > 0) await sleep(remainingMs);
+  }
   const latencies = [];
   let errors = 0;
   let next = 0;
   const started = performance.now();
+  lastHttpLoadStartedAt = started;
 
   async function worker() {
     while (true) {
@@ -85,14 +94,15 @@ async function httpLoad() {
   };
 }
 
-async function loadMutationNodes(required) {
+function loadMutationNodes(required) {
+  // Generate the same deterministic world fixtures in-process. Calling
+  // /world/chunks during setup consumes the production HTTP rate-limit budget
+  // and contaminates the subsequent 100-request measurement.
   const nodes = [];
   for (let chunkY = 8; chunkY <= 16 && nodes.length < required; chunkY += 1) {
     for (let chunkX = 8; chunkX <= 16 && nodes.length < required; chunkX += 1) {
-      const response = await fetch(`${baseUrl}/world/chunks/${chunkX}/${chunkY}`);
-      if (!response.ok) throw new Error(`Failed to load performance resource chunk ${chunkX}/${chunkY}: ${response.status}`);
-      const chunk = await response.json();
-      for (const resource of chunk.resources ?? []) {
+      const chunk = generateChunk(chunkX, chunkY);
+      for (const resource of chunk.resources) {
         if (resource?.id && resource?.type && Number.isSafeInteger(resource.x) && Number.isSafeInteger(resource.y)) {
           nodes.push(resource);
           if (nodes.length === required) break;
@@ -103,7 +113,6 @@ async function loadMutationNodes(required) {
   if (nodes.length < required) throw new Error(`Expected ${required} generated performance resource nodes, found ${nodes.length}`);
   return nodes;
 }
-
 async function prepareMutationUsers(users, nodes) {
   if (users.length !== nodes.length) throw new Error("Mutation user/node fixture count mismatch");
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -345,7 +354,7 @@ async function wsLoad(playerCount, users, sampleUsers, sampleNodes, cohortStart,
   };
 }
 const users = await loadTestUsers();
-const mutationNodes = await loadMutationNodes(251);
+const mutationNodes = loadMutationNodes(251);
 const scenarios = [];
 
 const cohortStarts = [0, 1, 51, 301];
