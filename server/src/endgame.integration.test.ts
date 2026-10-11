@@ -85,7 +85,9 @@ describe("Gate 16 endgame integration",()=>{
     const s=await setup(db);
     try{
       const realms=await s.db.query<{id:string}>("SELECT id FROM realms ORDER BY name LIMIT 2");
-      const territory=await s.db.query<{id:string}>("SELECT t.id FROM territories t WHERE t.realm_owner_id=$1 AND NOT EXISTS (SELECT 1 FROM realm_wars w WHERE w.target_territory_id=t.id AND w.status='active') ORDER BY t.id LIMIT 1",[realms.rows[1].id]);
+      const territory=await s.db.query<{id:string}>("SELECT id FROM territories WHERE realm_owner_id=$1 ORDER BY id LIMIT 1",[realms.rows[1].id]);
+      expect(territory.rows[0]).toBeDefined();
+      await s.db.query("UPDATE realm_wars SET status='cancelled' WHERE target_territory_id=$1 AND status='active'",[territory.rows[0].id]);
       const endgame=new EndgameStore(s.db);
       const war=await endgame.createRealmWar(s.a,realms.rows[0].id,realms.rows[1].id,territory.rows[0].id);
       await endgame.joinRealmWar(s.b,war.id,s.gb,realms.rows[1].id);
