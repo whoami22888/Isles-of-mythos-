@@ -95,23 +95,26 @@ async function httpLoad() {
 }
 
 function loadMutationNodes(required) {
-  // Generate the same deterministic world fixtures in-process. Calling
-  // /world/chunks during setup consumes the production HTTP rate-limit budget
-  // and contaminates the subsequent 100-request measurement.
+  // Keep performance-test gather fixtures outside creature aggro/ability range.
+  // Otherwise the live combat loop can stun a sample player and make an economy
+  // mutation fail for a reason unrelated to the resource-gathering path.
   const nodes = [];
-  for (let chunkY = 8; chunkY <= 16 && nodes.length < required; chunkY += 1) {
-    for (let chunkX = 8; chunkX <= 16 && nodes.length < required; chunkX += 1) {
+  const creatures = [];
+  for (let chunkY = 7; chunkY <= 17; chunkY += 1) {
+    for (let chunkX = 7; chunkX <= 17; chunkX += 1) {
       const chunk = generateChunk(chunkX, chunkY);
-      for (const resource of chunk.resources) {
-        if (resource?.id && resource?.type && Number.isSafeInteger(resource.x) && Number.isSafeInteger(resource.y)) {
-          nodes.push(resource);
-          if (nodes.length === required) break;
-        }
-      }
+      creatures.push(...chunk.creatures);
+      if (chunkX < 8 || chunkX > 16 || chunkY < 8 || chunkY > 16) continue;
+      nodes.push(...chunk.resources);
     }
   }
-  if (nodes.length < required) throw new Error(`Expected ${required} generated performance resource nodes, found ${nodes.length}`);
-  return nodes;
+  const safeNodes = nodes.filter((resource) =>
+    creatures.every((creature) => Math.hypot(resource.x - creature.x, resource.y - creature.y) > 10),
+  );
+  if (safeNodes.length < required) {
+    throw new Error(`Expected ${required} resource nodes outside creature aggro range, found ${safeNodes.length}`);
+  }
+  return safeNodes.slice(0, required);
 }
 async function prepareMutationUsers(users, nodes) {
   if (users.length !== nodes.length) throw new Error("Mutation user/node fixture count mismatch");
