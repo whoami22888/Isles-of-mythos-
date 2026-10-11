@@ -28,7 +28,7 @@ Pre-change main baseline: `c500cf7b6cbb967fd92d99bdc33b02536a5d0097`. Runs below
 
 Preserve section 93's 1/50/250/1,000-player matrix and add 500-player guild battle, 250-action naval battle, 250-contributor world boss, and 5,000 persisted player bases. Every baseline scenario must prove durable `gameplayCraft` and `gameplayMutation`; missing evidence fails validation. Record HTTP/WebSocket latency, WebSocket bytes, server tick, CPU and memory. Physical-device FPS/frame-time/GPU metrics remain unverified until section 94's Android/iOS device matrix runs.
 
-PostgreSQL acceptance requires an immutable exact-registry digest, verified signed provenance and CycloneDX SBOM, vulnerability scan evidence, artifact retention, monthly review and expedited reviewed security updates. Historical passing results do not satisfy these new checks.
+PostgreSQL acceptance requires an immutable exact-registry digest, verified signed SLSA provenance and SPDX SBOM attestation plus a locally generated CycloneDX SBOM, vulnerability scan evidence, artifact retention, monthly review and expedited reviewed security updates. Historical passing results do not satisfy these new checks.
 
 
 **Compatibility warning:** this pin selects PostgreSQL 18.6, a major-version change from PostgreSQL 17. Do not accept it unless the exact-image migration, integration, regression and full CI chain passes.
