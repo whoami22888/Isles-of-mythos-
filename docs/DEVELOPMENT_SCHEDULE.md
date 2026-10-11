@@ -7,7 +7,7 @@ The current engineering priority is PR #99 workflow/performance/supply-chain rec
 
 The required section 93 matrix remains 1, 50, 250 and 1,000 players. Add independent large guild-battle, large naval-battle, world-boss and 5,000-player-base scenarios. Every baseline scenario must prove persisted crafting and resource mutation evidence. Server load results do not prove physical-device FPS/GPU performance; section 94's Android/iOS device matrix remains a separate acceptance requirement.
 
-The prior PostgreSQL digest `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` was recorded but not security-cleared by immutability alone. The candidate replacement is `dhi.io/postgres:17-alpine3.23@sha256:3379965f6c91805f4dbcfc8ff9acc5998312344660a432a22b3ddea041614498`; accept it only after CI verifies the registry digest, signed SLSA provenance, CycloneDX SBOM and vulnerability scan, retaining the evidence artifacts. Review monthly and expedite updates through reviewed PRs.
+The prior PostgreSQL digest `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` was recorded but not security-cleared by immutability alone. The candidate replacement is `docker.io/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7`; accept it only after CI verifies the registry digest, signed SLSA provenance, CycloneDX SBOM and vulnerability scan, retaining the evidence artifacts. Review monthly and expedite updates through reviewed PRs.
 
 Gates 1–16 remain frozen. No new gameplay gate or production-readiness claim is authorized by this workflow/documentation work.
 
