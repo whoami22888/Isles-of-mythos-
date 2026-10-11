@@ -1,5 +1,16 @@
 # Isles of Mythos: Sunken Tides — Development Schedule
 
+
+## Controller reconciliation update — 2026-10-12
+
+The current engineering priority is PR #99 workflow/performance/supply-chain reconciliation followed by PR #107 documentation reconciliation. The pre-change main baseline is `c500cf7b6cbb967fd92d99bdc33b02536a5d0097`; earlier workflow runs must not be represented as verification of later heads.
+
+The required section 93 matrix remains 1, 50, 250 and 1,000 players. Add independent large guild-battle, large naval-battle, world-boss and 5,000-player-base scenarios. Every baseline scenario must prove persisted crafting and resource mutation evidence. Server load results do not prove physical-device FPS/GPU performance; section 94's Android/iOS device matrix remains a separate acceptance requirement.
+
+The prior PostgreSQL digest `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` was recorded but not security-cleared by immutability alone. The candidate replacement is `dhi.io/postgres:17-alpine3.23@sha256:3379965f6c91805f4dbcfc8ff9acc5998312344660a432a22b3ddea041614498`; accept it only after CI verifies the registry digest, signed SLSA provenance, CycloneDX SBOM and vulnerability scan, retaining the evidence artifacts. Review monthly and expedite updates through reviewed PRs.
+
+Gates 1–16 remain frozen. No new gameplay gate or production-readiness claim is authorized by this workflow/documentation work.
+
 This schedule is the execution map for the master development directive. Work remains milestone-gated: implement, build, test, inspect failures, fix, retest, verify, document, then continue.
 
 ## Current position
