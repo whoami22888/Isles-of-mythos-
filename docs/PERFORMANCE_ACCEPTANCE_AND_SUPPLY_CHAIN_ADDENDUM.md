@@ -21,7 +21,9 @@ The previously recorded Docker Official Image digest `sha256:b0f9560a2de083e2cc7
 
 `cgr.dev/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7`
 
-Before acceptance, CI must verify the exact registry/index digest, signed SLSA provenance, signed SPDX SBOM attestation and a vulnerability scan that fails on HIGH/CRITICAL findings (unfixed issues excluded). Retain inspection, provenance, SBOM and vulnerability artifacts. Review monthly and expedite security updates through a reviewed PR; resolve the new digest and rerun all evidence gates. Never silently move a digest or substitute a tag.
+This is PostgreSQL 18.6, a major-version change from PostgreSQL 17. The current image metadata review reports one medium-severity CVE; the exact-digest automated scan remains authoritative. Do not accept the major-version change unless migrations, integration tests, regression tests, backup/restore and all required CI checks pass against this exact image.
+
+Before acceptance, CI must verify the exact registry/index digest and both platform manifest digests; verify the signed image and SLSA provenance using identity `https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main` and issuer `https://token.actions.githubusercontent.com`; verify the signed SPDX SBOM attestation; and run a vulnerability scan that fails on HIGH/CRITICAL findings (unfixed issues excluded). Retain inspection, signature, provenance, SPDX SBOM and generated CycloneDX SBOM/vulnerability artifacts. Review monthly and expedite security updates through a reviewed PR; resolve the new digest and rerun all evidence gates. Never silently move a digest or substitute a tag.
 
 ## Merge and recordkeeping
 Reconcile PRs to current main; run CI, Performance Acceptance and Static Security Quality on the exact resulting PR HEAD; obtain independent review and required approval; merge only when repository rules allow; then verify checks on the exact merge commit. Record SHA, run IDs, artifact links, review decision and merge/post-merge SHAs in the Master Project Index. Gates 1–16 remain frozen.
