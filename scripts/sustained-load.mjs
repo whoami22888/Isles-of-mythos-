@@ -171,6 +171,16 @@ async function exerciseCraftMutation(socket, user, scenario) {
     recipeId: "tool.wooden-club",
     transactionId: result.transactionId,
     persisted: true,
+    persistenceEvidence: {
+      inventoryAfter: {
+        "resource.wood": inventory["resource.wood"],
+        "tool.wooden-club": inventory["tool.wooden-club"],
+      },
+      ledger: {
+        transactionId: row.transaction_id,
+        recipeId: row.response.recipeId,
+      },
+    },
   };
 }
 
@@ -214,7 +224,8 @@ async function exerciseGatherMutation(socket, user, node, scenario) {
       "SELECT inventory->>$2 AS quantity FROM player_profiles WHERE user_id=$1",
       [user.id, itemId],
     );
-    if (Number(profile.rows[0]?.quantity ?? 0) < expectedQuantity) {
+    const inventoryQuantity = Number(profile.rows[0]?.quantity ?? 0);
+    if (inventoryQuantity < expectedQuantity) {
       throw new Error(`Gameplay mutation did not persist inventory for ${node.id}`);
     }
     const nodeState = await pool.query(
@@ -225,11 +236,22 @@ async function exerciseGatherMutation(socket, user, node, scenario) {
     if (!depletedUntil || new Date(depletedUntil).getTime() <= Date.now()) {
       throw new Error(`Gameplay mutation did not persist resource depletion for ${node.id}`);
     }
+    node.persistenceEvidence = {
+      inventoryQuantity,
+      depletedUntil: new Date(depletedUntil).toISOString(),
+    };
   } finally {
     await pool.end();
   }
 
-  return { action: "gather_resource", resourceId: node.id, itemId, quantity: expectedQuantity, persisted: true };
+  return {
+    action: "gather_resource",
+    resourceId: node.id,
+    itemId,
+    quantity: expectedQuantity,
+    persisted: true,
+    persistenceEvidence: node.persistenceEvidence,
+  };
 }
 
 async function waitForPong(socket) {
