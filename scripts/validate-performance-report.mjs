@@ -46,16 +46,24 @@ export function validateReport(report) {
     need(
       craft?.action === "craft" && craft.recipeId === "tool.wooden-club" &&
       typeof craft.transactionId === "string" && craft.transactionId.length > 0 &&
-      craft.persisted === true && Number.isFinite(craft.latencyMs) && craft.latencyMs >= 0,
-      "Missing persisted gameplayCraft evidence " + players,
+      craft.persisted === true && Number.isFinite(craft.latencyMs) && craft.latencyMs >= 0 &&
+      craft.persistenceEvidence?.ledger?.transactionId === craft.transactionId &&
+      craft.persistenceEvidence?.ledger?.recipeId === craft.recipeId &&
+      craft.persistenceEvidence?.inventoryAfter?.["resource.wood"] === 0 &&
+      craft.persistenceEvidence?.inventoryAfter?.["tool.wooden-club"] === 1,
+      "Missing or inconsistent durable gameplayCraft evidence " + players,
     );
     const mutation = ws.gameplayMutation;
     need(
-      mutation?.action === "gather_resource" && typeof mutation.resourceId === "string" &&
-      typeof mutation.itemId === "string" && Number.isInteger(mutation.quantity) &&
+      mutation?.action === "gather_resource" && typeof mutation.resourceId === "string" && mutation.resourceId.length > 0 &&
+      typeof mutation.itemId === "string" && mutation.itemId.length > 0 && Number.isSafeInteger(mutation.quantity) &&
       mutation.quantity > 0 && mutation.persisted === true &&
-      Number.isFinite(mutation.latencyMs) && mutation.latencyMs >= 0,
-      "Missing persisted gameplayMutation evidence " + players,
+      Number.isFinite(mutation.latencyMs) && mutation.latencyMs >= 0 &&
+      Number.isSafeInteger(mutation.persistenceEvidence?.inventoryQuantity) &&
+      mutation.persistenceEvidence.inventoryQuantity >= mutation.quantity &&
+      typeof mutation.persistenceEvidence?.depletedUntil === "string" &&
+      Number.isFinite(Date.parse(mutation.persistenceEvidence.depletedUntil)),
+      "Missing or inconsistent durable gameplayMutation evidence " + players,
     );
     need(ws.networkBytesSent > 0 && ws.networkBytesReceived > 0, "Missing bandwidth " + players);
   }
@@ -106,8 +114,14 @@ if (process.argv[2] === "--self-test") {
         gameplayLatencySamples: Math.min(players, 100) * 2,
         gameplayP95Ms: 1, gameplayP99Ms: 1, authP95Ms: 1, authP99Ms: 1,
         pingP50Ms: 1, pingP95Ms: 1, pingP99Ms: 1,
-        gameplayCraft: { action: "craft", recipeId: "tool.wooden-club", transactionId: "tx", latencyMs: 1, persisted: true },
-        gameplayMutation: { action: "gather_resource", resourceId: "r", itemId: "resource.wood", quantity: 1, latencyMs: 1, persisted: true },
+        gameplayCraft: {
+          action: "craft", recipeId: "tool.wooden-club", transactionId: "tx", latencyMs: 1, persisted: true,
+          persistenceEvidence: { ledger: { transactionId: "tx", recipeId: "tool.wooden-club" }, inventoryAfter: { "resource.wood": 0, "tool.wooden-club": 1 } },
+        },
+        gameplayMutation: {
+          action: "gather_resource", resourceId: "r", itemId: "resource.wood", quantity: 1, latencyMs: 1, persisted: true,
+          persistenceEvidence: { inventoryQuantity: 1, depletedUntil: new Date(Date.now() + 60000).toISOString() },
+        },
         networkBytesSent: 1, networkBytesReceived: 1,
       },
     })),
@@ -131,6 +145,15 @@ if (process.argv[2] === "--self-test") {
   const missingMutation = structuredClone(report);
   missingMutation.scenarios[0].websocket.gameplayMutation.persisted = false;
   assert.throws(() => validateReport(missingMutation), /gameplayMutation/);
+  const missingCraftLedger = structuredClone(report);
+  delete missingCraftLedger.scenarios[0].websocket.gameplayCraft.persistenceEvidence.ledger.transactionId;
+  assert.throws(() => validateReport(missingCraftLedger), /gameplayCraft/);
+  const badMutationInventory = structuredClone(report);
+  badMutationInventory.scenarios[0].websocket.gameplayMutation.persistenceEvidence.inventoryQuantity = 0;
+  assert.throws(() => validateReport(badMutationInventory), /gameplayMutation/);
+  const badMutationDepletion = structuredClone(report);
+  badMutationDepletion.scenarios[0].websocket.gameplayMutation.persistenceEvidence.depletedUntil = "not-a-date";
+  assert.throws(() => validateReport(badMutationDepletion), /gameplayMutation/);
   const badTick = structuredClone(report);
   badTick.serverMetrics.tickP95Ms = 41;
   assert.throws(() => validateReport(badTick), /tick p95/);

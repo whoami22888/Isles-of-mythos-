@@ -43,6 +43,8 @@ jobs:
           --health-retries 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
@@ -147,6 +149,35 @@ jobs:
         run: |
           kill "$(cat server.pid)" 2>/dev/null || true
           wait "$(cat server.pid)" 2>/dev/null || true
+      - name: Verify acceptance evidence completeness
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            performance-results.json
+            performance-system.log
+            performance-server.log
+            postgres-image-inspect.txt
+            postgres-manifest-index.json
+            postgres-server-version.txt
+            postgres-signature-amd64.json
+            postgres-provenance-amd64.json
+            postgres-sbom-amd64.json
+            postgres-signature-arm64.json
+            postgres-provenance-arm64.json
+            postgres-sbom-arm64.json
+            postgres.sbom.cdx.json
+            postgres-vulnerability-report.txt
+          )
+          missing=0
+          for file in "\${files[@]}"; do
+            if [[ ! -s "$file" ]]; then
+              echo "::error::Missing or empty acceptance evidence: $file"
+              missing=1
+            fi
+          done
+          exit "$missing"
       - name: Upload acceptance evidence
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5

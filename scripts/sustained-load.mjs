@@ -157,21 +157,36 @@ async function exerciseCraftMutation(socket, user, scenario) {
     throw new Error("Gameplay mutation returned invalid craft result for " + requestId);
   }
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  let inventory;
+  let row;
   try {
     const profile = await pool.query("SELECT inventory FROM player_profiles WHERE user_id=$1", [user.id]);
-    const inventory = profile.rows[0]?.inventory;
+    inventory = profile.rows[0]?.inventory;
     if (inventory?.["resource.wood"] !== 0 || inventory?.["tool.wooden-club"] !== 1) {
       throw new Error("Gameplay craft did not persist expected inventory for " + requestId);
     }
     const ledger = await pool.query("SELECT transaction_id, response FROM craft_requests WHERE request_key=$1", [user.id + ":" + requestId]);
-    const row = ledger.rows[0];
+    row = ledger.rows[0];
     if (!row || row.transaction_id !== result.transactionId || row.response?.recipeId !== "tool.wooden-club") {
       throw new Error("Gameplay craft transaction was not durably persisted for " + requestId);
     }
   } finally {
     await pool.end();
   }
-  return { action: "craft", recipeId: "tool.wooden-club", transactionId: result.transactionId, latencyMs, persisted: true };
+  return {
+    action: "craft",
+    recipeId: "tool.wooden-club",
+    transactionId: result.transactionId,
+    latencyMs,
+    persisted: true,
+    persistenceEvidence: {
+      inventoryAfter: {
+        "resource.wood": inventory["resource.wood"],
+        "tool.wooden-club": inventory["tool.wooden-club"],
+      },
+      ledger: { transactionId: row.transaction_id, recipeId: row.response.recipeId },
+    },
+  };
 }
 
 async function exerciseGatherMutation(socket, user, node, scenario) {
@@ -203,20 +218,34 @@ async function exerciseGatherMutation(socket, user, node, scenario) {
     throw new Error("Gameplay mutation returned invalid result for " + node.id);
   }
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  let inventoryQuantity;
+  let depletedUntil;
   try {
     const profile = await pool.query("SELECT inventory->>$2 AS quantity FROM player_profiles WHERE user_id=$1", [user.id, itemId]);
-    if (Number(profile.rows[0]?.quantity ?? 0) < expectedQuantity) {
+    inventoryQuantity = Number(profile.rows[0]?.quantity ?? 0);
+    if (inventoryQuantity < expectedQuantity) {
       throw new Error("Gameplay mutation did not persist inventory for " + node.id);
     }
     const nodeState = await pool.query("SELECT depleted_until FROM world_resource_nodes WHERE node_id=$1", [node.id]);
-    const depletedUntil = nodeState.rows[0]?.depleted_until;
+    depletedUntil = nodeState.rows[0]?.depleted_until;
     if (!depletedUntil || new Date(depletedUntil).getTime() <= Date.now()) {
       throw new Error("Gameplay mutation did not persist resource depletion for " + node.id);
     }
   } finally {
     await pool.end();
   }
-  return { action: "gather_resource", resourceId: node.id, itemId, quantity: expectedQuantity, latencyMs, persisted: true };
+  return {
+    action: "gather_resource",
+    resourceId: node.id,
+    itemId,
+    quantity: expectedQuantity,
+    latencyMs,
+    persisted: true,
+    persistenceEvidence: {
+      inventoryQuantity,
+      depletedUntil: new Date(depletedUntil).toISOString(),
+    },
+  };
 }
 async function waitForPong(socket) {
   return new Promise((resolve) => {
