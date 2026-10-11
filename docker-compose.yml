@@ -12,7 +12,7 @@ services:
     command: ["sh", "-c", "npm install --ignore-scripts --no-audit --no-fund && npm run dev -w client -- --host 0.0.0.0"]
 
   postgres:
-    image: dhi.io/postgres:17-alpine3.23@sha256:3379965f6c91805f4dbcfc8ff9acc5998312344660a432a22b3ddea041614498
+    image: docker.io/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-isles}
