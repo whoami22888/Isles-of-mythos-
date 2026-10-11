@@ -19,9 +19,9 @@ Pin every remote GitHub Action to a verified 40-character commit SHA. Each workf
 ## PostgreSQL supply chain
 The previously recorded Docker Official Image digest `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` is immutable but not security-cleared by that fact alone; the prior Docker Hub metadata review reported 104 vulnerabilities. Candidate replacement:
 
-`docker.io/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7`
+`cgr.dev/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7`
 
-Before acceptance, CI must verify the exact registry/index digest, signed SLSA provenance, signed SPDX SBOM and a vulnerability scan that fails on HIGH/CRITICAL findings (unfixed issues excluded). Retain inspection, provenance, SBOM and vulnerability artifacts. Review monthly and expedite security updates through a reviewed PR; resolve the new digest and rerun all evidence gates. Never silently move a digest or substitute a tag.
+Before acceptance, CI must verify the exact registry/index digest, signed SLSA provenance, signed SPDX SBOM attestation and a vulnerability scan that fails on HIGH/CRITICAL findings (unfixed issues excluded). Retain inspection, provenance, SBOM and vulnerability artifacts. Review monthly and expedite security updates through a reviewed PR; resolve the new digest and rerun all evidence gates. Never silently move a digest or substitute a tag.
 
 ## Merge and recordkeeping
 Reconcile PRs to current main; run CI, Performance Acceptance and Static Security Quality on the exact resulting PR HEAD; obtain independent review and required approval; merge only when repository rules allow; then verify checks on the exact merge commit. Record SHA, run IDs, artifact links, review decision and merge/post-merge SHAs in the Master Project Index. Gates 1–16 remain frozen.
