@@ -58,9 +58,11 @@ async function httpLoad() {
       if (index >= httpRequests) return;
       const startedRequest = performance.now();
       try {
-        const response = await fetch(`${baseUrl}/health`);
-        if (!response.ok) errors++;
-        else await response.text();
+        const chunkX = 8 + (index % 9);
+      const chunkY = 8 + (Math.floor(index / 9) % 9);
+      const response = await fetch(baseUrl + "/world/chunks/" + chunkX + "/" + chunkY);
+      if (!response.ok) errors++;
+      else await response.json();
       } catch {
         errors++;
       }
@@ -72,6 +74,7 @@ async function httpLoad() {
   const elapsed = performance.now() - started;
 
   return {
+    endpoint: "world_chunks",
     requests: httpRequests,
     errors,
     durationMs: Math.round(elapsed),
@@ -101,26 +104,28 @@ async function loadMutationNodes(required) {
   return nodes;
 }
 
-async function prepareMutationUser(user, node) {
+async function prepareMutationUsers(users, nodes) {
+  if (users.length !== nodes.length) throw new Error("Mutation user/node fixture count mismatch");
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    await pool.query(
-      "INSERT INTO player_profiles(user_id,x,y,inventory) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(user_id) DO UPDATE SET x=EXCLUDED.x,y=EXCLUDED.y,inventory=EXCLUDED.inventory",
-      [user.id, node.x, node.y, JSON.stringify({ "resource.wood": 8 })],
-    );
+    for (let index = 0; index < users.length; index++) {
+      await pool.query(
+        "INSERT INTO player_profiles(user_id,x,y,inventory) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(user_id) DO UPDATE SET x=EXCLUDED.x,y=EXCLUDED.y,inventory=EXCLUDED.inventory",
+        [users[index].id, nodes[index].x, nodes[index].y, JSON.stringify({ "resource.wood": 8 })],
+      );
+    }
   } finally {
     await pool.end();
   }
 }
-
 async function exerciseCraftMutation(socket, user, scenario) {
-  const requestId = `performance-craft-${scenario}`;
+  const requestId = "performance-craft-" + scenario;
+  const requestStarted = performance.now();
   const result = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       socket.off("message", onMessage);
-      reject(new Error(`Gameplay mutation timed out: craft ${requestId}`));
+      reject(new Error("Gameplay mutation timed out: craft " + requestId));
     }, 5000);
-
     function onMessage(raw) {
       try {
         const value = JSON.parse(raw.toString());
@@ -130,61 +135,43 @@ async function exerciseCraftMutation(socket, user, scenario) {
         resolve(value);
       } catch {}
     }
-
     socket.on("message", onMessage);
     socket.send(JSON.stringify({ type: "craft", requestId, recipeId: "tool.wooden-club" }));
   });
-
-  if (result.type === "error") throw new Error(`Gameplay mutation failed: craft ${result.code}`);
-  if (result.type !== "craft_result" ||
-      result.requestId !== requestId ||
-      result.recipeId !== "tool.wooden-club" ||
-      typeof result.transactionId !== "string") {
-    throw new Error(`Gameplay mutation returned invalid craft result for ${requestId}`);
+  const latencyMs = performance.now() - requestStarted;
+  if (result.type === "error") throw new Error("Gameplay mutation failed: craft " + result.code);
+  if (result.type !== "craft_result" || result.requestId !== requestId ||
+      result.recipeId !== "tool.wooden-club" || typeof result.transactionId !== "string") {
+    throw new Error("Gameplay mutation returned invalid craft result for " + requestId);
   }
-
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const profile = await pool.query(
-      "SELECT inventory FROM player_profiles WHERE user_id=$1",
-      [user.id],
-    );
+    const profile = await pool.query("SELECT inventory FROM player_profiles WHERE user_id=$1", [user.id]);
     const inventory = profile.rows[0]?.inventory;
     if (inventory?.["resource.wood"] !== 0 || inventory?.["tool.wooden-club"] !== 1) {
-      throw new Error(`Gameplay craft did not persist expected inventory for ${requestId}`);
+      throw new Error("Gameplay craft did not persist expected inventory for " + requestId);
     }
-
-    const ledger = await pool.query(
-      "SELECT transaction_id, response FROM craft_requests WHERE request_key=$1",
-      [`${user.id}:${requestId}`],
-    );
+    const ledger = await pool.query("SELECT transaction_id, response FROM craft_requests WHERE request_key=$1", [user.id + ":" + requestId]);
     const row = ledger.rows[0];
     if (!row || row.transaction_id !== result.transactionId || row.response?.recipeId !== "tool.wooden-club") {
-      throw new Error(`Gameplay craft transaction was not durably persisted for ${requestId}`);
+      throw new Error("Gameplay craft transaction was not durably persisted for " + requestId);
     }
   } finally {
     await pool.end();
   }
-
-  return {
-    action: "craft",
-    recipeId: "tool.wooden-club",
-    transactionId: result.transactionId,
-    persisted: true,
-  };
+  return { action: "craft", recipeId: "tool.wooden-club", transactionId: result.transactionId, latencyMs, persisted: true };
 }
 
 async function exerciseGatherMutation(socket, user, node, scenario) {
-  const requestId = `performance-gather-${scenario}`;
+  const requestId = "performance-gather-" + scenario;
   const itemId = node.type === "wood" ? "resource.wood" : node.type === "stone" ? "resource.stone" : "resource.herb";
   const expectedQuantity = node.type === "herb" ? 1 : 2;
-
+  const requestStarted = performance.now();
   const result = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       socket.off("message", onMessage);
-      reject(new Error(`Gameplay mutation timed out: gather_resource ${node.id}`));
+      reject(new Error("Gameplay mutation timed out: gather_resource " + node.id));
     }, 5000);
-
     function onMessage(raw) {
       try {
         const value = JSON.parse(raw.toString());
@@ -194,44 +181,31 @@ async function exerciseGatherMutation(socket, user, node, scenario) {
         resolve(value);
       } catch {}
     }
-
     socket.on("message", onMessage);
     socket.send(JSON.stringify({ type: "gather_resource", requestId, resourceId: node.id }));
   });
-
-  if (result.type === "error") throw new Error(`Gameplay mutation failed: ${result.code}`);
-  if (result.type !== "resource_gathered" ||
-      result.requestId !== requestId ||
-      result.resourceId !== node.id ||
-      result.itemId !== itemId ||
-      result.quantity !== expectedQuantity) {
-    throw new Error(`Gameplay mutation returned invalid result for ${node.id}`);
+  const latencyMs = performance.now() - requestStarted;
+  if (result.type === "error") throw new Error("Gameplay mutation failed: " + result.code);
+  if (result.type !== "resource_gathered" || result.requestId !== requestId ||
+      result.resourceId !== node.id || result.itemId !== itemId || result.quantity !== expectedQuantity) {
+    throw new Error("Gameplay mutation returned invalid result for " + node.id);
   }
-
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const profile = await pool.query(
-      "SELECT inventory->>$2 AS quantity FROM player_profiles WHERE user_id=$1",
-      [user.id, itemId],
-    );
+    const profile = await pool.query("SELECT inventory->>$2 AS quantity FROM player_profiles WHERE user_id=$1", [user.id, itemId]);
     if (Number(profile.rows[0]?.quantity ?? 0) < expectedQuantity) {
-      throw new Error(`Gameplay mutation did not persist inventory for ${node.id}`);
+      throw new Error("Gameplay mutation did not persist inventory for " + node.id);
     }
-    const nodeState = await pool.query(
-      "SELECT depleted_until FROM world_resource_nodes WHERE node_id=$1",
-      [node.id],
-    );
+    const nodeState = await pool.query("SELECT depleted_until FROM world_resource_nodes WHERE node_id=$1", [node.id]);
     const depletedUntil = nodeState.rows[0]?.depleted_until;
     if (!depletedUntil || new Date(depletedUntil).getTime() <= Date.now()) {
-      throw new Error(`Gameplay mutation did not persist resource depletion for ${node.id}`);
+      throw new Error("Gameplay mutation did not persist resource depletion for " + node.id);
     }
   } finally {
     await pool.end();
   }
-
-  return { action: "gather_resource", resourceId: node.id, itemId, quantity: expectedQuantity, persisted: true };
+  return { action: "gather_resource", resourceId: node.id, itemId, quantity: expectedQuantity, latencyMs, persisted: true };
 }
-
 async function waitForPong(socket) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
@@ -253,9 +227,11 @@ async function waitForPong(socket) {
   });
 }
 
-async function wsLoad(playerCount, users, mutationUser, mutationNode, scenario) {
+async function wsLoad(playerCount, users, sampleUsers, sampleNodes, cohortStart, scenario) {
   const sockets = [];
-  const latencies = [];
+  const authLatencies = [];
+  const pingLatencies = [];
+  const gameplayLatencies = [];
   let networkBytesSent = 0;
   let networkBytesReceived = 0;
   let connected = 0;
@@ -265,89 +241,84 @@ async function wsLoad(playerCount, users, mutationUser, mutationNode, scenario) 
   await new Promise((resolve, reject) => {
     let remaining = playerCount;
     let settled = false;
-
-    const finish = () => {
-      if (remaining === 0 && !settled) {
-        settled = true;
-        resolve();
-      }
-    };
+    const finish = () => { if (remaining === 0 && !settled) { settled = true; resolve(); } };
 
     for (let index = 0; index < playerCount; index++) {
       const socket = new WebSocket(wsUrl);
       sockets.push(socket);
       const originalSend = socket.send.bind(socket);
-      socket.send = (data, ...args) => { networkBytesSent += typeof data === "string" ? Buffer.byteLength(data) : (data?.byteLength ?? data?.length ?? 0); return originalSend(data, ...args); };
+      socket.send = (data, ...args) => {
+        networkBytesSent += typeof data === "string" ? Buffer.byteLength(data) : (data?.byteLength ?? data?.length ?? 0);
+        return originalSend(data, ...args);
+      };
       socket.on("message", raw => { networkBytesReceived += Buffer.isBuffer(raw) ? raw.length : Buffer.byteLength(String(raw)); });
       const started = performance.now();
-
       socket.once("open", () => {
         connected++;
-        socket.once("message", (raw) => {
+        socket.once("message", raw => {
           try {
             const ready = JSON.parse(raw.toString());
             if (ready.type !== "server_ready") throw new Error("missing server_ready");
-
             socket.on("message", function authMessage(authRaw) {
               try {
                 const auth = JSON.parse(authRaw.toString());
                 if (auth.type !== "auth_ok") return;
                 socket.off("message", authMessage);
                 authenticated++;
-                latencies.push(performance.now() - started);
-              } catch {
-                errors++;
-              }
+                authLatencies.push(performance.now() - started);
+              } catch { errors++; }
               remaining--;
               finish();
             });
-
-            socket.send(JSON.stringify({ type: "auth", token: tokenFor(users[index]) }));
-          } catch {
-            errors++;
-            remaining--;
-            finish();
-          }
+            socket.send(JSON.stringify({ type: "auth", token: tokenFor(users[cohortStart + index]) }));
+          } catch { errors++; remaining--; finish(); }
         });
       });
-
-      socket.on("error", () => {
-        errors++;
-        remaining--;
-        finish();
-      });
+      socket.on("error", () => { errors++; remaining--; finish(); });
     }
-
-    setTimeout(() => {
-      if (!settled) reject(new Error(`Timed out establishing ${playerCount} WebSockets`));
-    }, Math.max(60000, durationMs * 6));
+    setTimeout(() => { if (!settled) reject(new Error("Timed out establishing " + playerCount + " WebSockets")); }, Math.max(60000, durationMs * 6));
   });
 
   if (connected !== playerCount || authenticated !== playerCount || errors !== 0) {
     for (const socket of sockets) socket.close();
-    throw new Error(`Player-load establishment failed: requested=${playerCount} connected=${connected} authenticated=${authenticated} errors=${errors}`);
+    throw new Error("Player-load establishment failed: requested=" + playerCount + " connected=" + connected + " authenticated=" + authenticated + " errors=" + errors);
   }
 
-  const mutationIndex = users.findIndex((user) => user.id === mutationUser.id);
-  if (mutationIndex < 0 || mutationIndex >= sockets.length) {
+  const sampleCount = Math.min(playerCount, 100);
+  if (sampleUsers.length !== sampleCount || sampleNodes.length !== sampleCount) {
     for (const socket of sockets) socket.close();
-    throw new Error("Performance mutation user was not included in this scenario");
+    throw new Error("Gameplay latency sample fixtures do not match scenario size");
   }
-  const gameplayCraft = await exerciseCraftMutation(sockets[mutationIndex], mutationUser, scenario);
-  const gameplayMutation = await exerciseGatherMutation(sockets[mutationIndex], mutationUser, mutationNode, scenario);
+  const gameplayResults = [];
+  for (let offset = 0; offset < sampleCount; offset += 10) {
+    const batchSize = Math.min(10, sampleCount - offset);
+    const batch = await Promise.all(Array.from({ length: batchSize }, async (_, localIndex) => {
+      const index = offset + localIndex;
+      const user = sampleUsers[index];
+      const node = sampleNodes[index];
+      const socket = sockets[index];
+      const suffix = scenario * 1000 + index;
+      const craft = await exerciseCraftMutation(socket, user, suffix);
+      const mutation = await exerciseGatherMutation(socket, user, node, suffix);
+      gameplayLatencies.push(craft.latencyMs, mutation.latencyMs);
+      return { craft, mutation };
+    }));
+    gameplayResults.push(...batch);
+  }
 
+  const gameplayCraft = gameplayResults[0].craft;
+  const gameplayMutation = gameplayResults[0].mutation;
   const end = Date.now() + durationMs;
   let pings = 0;
   let pongs = 0;
-
   while (Date.now() < end) {
-    const active = sockets.filter((socket) => socket.readyState === WebSocket.OPEN);
-    await Promise.all(active.map(async (socket) => {
+    const active = sockets.filter(socket => socket.readyState === WebSocket.OPEN);
+    await Promise.all(active.map(async socket => {
       const started = performance.now();
       pings++;
       if (await waitForPong(socket)) {
         pongs++;
-        latencies.push(performance.now() - started);
+        pingLatencies.push(performance.now() - started);
       }
     }));
     await sleep(250);
@@ -355,46 +326,42 @@ async function wsLoad(playerCount, users, mutationUser, mutationNode, scenario) 
 
   for (const socket of sockets) socket.close();
   await sleep(100);
-
   const pingSuccessRate = pings ? pongs / pings : 0;
-  if (pings === 0 || pongs !== pings) {
-    throw new Error(`Player-load ping failure: requested=${playerCount} pings=${pings} pongs=${pongs}`);
-  }
+  if (pings === 0 || pongs !== pings) throw new Error("Player-load ping failure: requested=" + playerCount + " pings=" + pings + " pongs=" + pongs);
 
   return {
-    requestedPlayers: playerCount,
-    connected,
-    authenticated,
-    errors,
-    gameplayCraft,
-    gameplayMutation,
-    pings,
-    pongs,
-    pingSuccessRate,
-    p50Ms: percentile(latencies, 0.5),
-    p95Ms: percentile(latencies, 0.95),
-    p99Ms: percentile(latencies, 0.99),
-    networkBytesSent,
-    networkBytesReceived,
+    requestedPlayers: playerCount, connected, authenticated, errors, gameplayCraft, gameplayMutation,
+    gameplayLatencySamples: gameplayLatencies.length,
+    gameplayP50Ms: percentile(gameplayLatencies, 0.5),
+    gameplayP95Ms: percentile(gameplayLatencies, 0.95),
+    gameplayP99Ms: percentile(gameplayLatencies, 0.99),
+    authP95Ms: percentile(authLatencies, 0.95),
+    authP99Ms: percentile(authLatencies, 0.99),
+    pings, pongs, pingSuccessRate,
+    pingP50Ms: percentile(pingLatencies, 0.5),
+    pingP95Ms: percentile(pingLatencies, 0.95),
+    pingP99Ms: percentile(pingLatencies, 0.99),
+    networkBytesSent, networkBytesReceived,
   };
 }
-
 const users = await loadTestUsers();
-const mutationNodes = await loadMutationNodes(levels.length);
+const mutationNodes = await loadMutationNodes(251);
 const scenarios = [];
 
+const cohortStarts = [0, 1, 51, 301];
+const nodeStarts = [0, 1, 51, 151];
 for (let index = 0; index < levels.length; index += 1) {
   const players = levels[index];
-  // Use a player outside all earlier cohorts so its active server state cannot be stale.
-const mutationUserIndexes = [0, 1, 50, 250];
-const mutationUser = users[mutationUserIndexes[index]];
-  const mutationNode = mutationNodes[index];
-  await prepareMutationUser(mutationUser, mutationNode);
+  const sampleCount = Math.min(players, 100);
+  const cohortStart = cohortStarts[index];
+  const sampleUsers = users.slice(cohortStart, cohortStart + sampleCount);
+  const sampleNodes = mutationNodes.slice(nodeStarts[index], nodeStarts[index] + sampleCount);
+  await prepareMutationUsers(sampleUsers, sampleNodes);
 
   const result = {
     players,
     http: await httpLoad(),
-    websocket: await wsLoad(players, users, mutationUser, mutationNode, index + 1),
+    websocket: await wsLoad(players, users, sampleUsers, sampleNodes, cohortStart, index + 1),
   };
   if (result.http.errors !== 0) {
     throw new Error(`HTTP load failed at ${players} players: ${result.http.errors} errors`);
