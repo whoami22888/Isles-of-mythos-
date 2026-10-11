@@ -8,6 +8,8 @@ let websocketAuthenticated = 0;
 let activePlayers = 0;
 let tickDurationSecondsSum = 0;
 let tickDurationSecondsCount = 0;
+const tickDurationBucketBoundsSeconds = [0.005, 0.01, 0.02, 0.04, 0.05, 0.1, 0.25, 0.5, 1, Number.POSITIVE_INFINITY];
+const tickDurationBucketCounts = tickDurationBucketBoundsSeconds.map(() => 0);
 let databaseUp = 1;
 
 export function recordHttpRequest(durationMs: number, statusCode: number): void {
@@ -30,8 +32,12 @@ export function setActivePlayers(value: number): void {
 }
 
 export function recordTick(durationMs: number): void {
-  tickDurationSecondsSum += durationMs / 1000;
+  const seconds = Math.max(0, durationMs / 1000);
+  tickDurationSecondsSum += seconds;
   tickDurationSecondsCount++;
+  tickDurationBucketBoundsSeconds.forEach((bound, index) => {
+    if (seconds <= bound) tickDurationBucketCounts[index]++;
+  });
 }
 
 export function setDatabaseUp(value: boolean): void {
@@ -80,11 +86,10 @@ export function renderPrometheusMetrics(): string {
     "# HELP isles_active_players Authenticated active players.",
     "# TYPE isles_active_players gauge",
     `isles_active_players ${activePlayers}`,
-    "# HELP isles_tick_duration_seconds_sum Game tick duration sum.",
-    "# TYPE isles_tick_duration_seconds_sum counter",
+    "# HELP isles_tick_duration_seconds Game tick duration distribution in seconds.",
+    "# TYPE isles_tick_duration_seconds histogram",
+    ...tickDurationBucketBoundsSeconds.map((bound, index) => 'isles_tick_duration_seconds_bucket{le="' + (Number.isFinite(bound) ? bound : "+Inf") + '"} ' + tickDurationBucketCounts[index]),
     `isles_tick_duration_seconds_sum ${tickDurationSecondsSum}`,
-    "# HELP isles_tick_duration_seconds_count Game tick count.",
-    "# TYPE isles_tick_duration_seconds_count counter",
     `isles_tick_duration_seconds_count ${tickDurationSecondsCount}`,
     "# HELP isles_database_up Database connectivity status.",
     "# TYPE isles_database_up gauge",
