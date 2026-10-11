@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 export const EXPECTED_PLAYERS = [1, 50, 250, 1000];
 
@@ -77,7 +79,7 @@ export function validatePerformanceReport(report) {
   return true;
 }
 
-if (process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const report = JSON.parse(readFileSync("performance-results.json", "utf8"));
   validatePerformanceReport(report);
   console.log("Performance acceptance report verified, including persisted craft and gameplay mutation evidence for 1, 50, 250, and 1000 players.");
