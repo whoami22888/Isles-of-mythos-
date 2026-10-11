@@ -144,12 +144,14 @@ async function exerciseCraftMutation(socket, user, scenario) {
   }
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  let inventory;
+  let row;
   try {
     const profile = await pool.query(
       "SELECT inventory FROM player_profiles WHERE user_id=$1",
       [user.id],
     );
-    const inventory = profile.rows[0]?.inventory;
+    inventory = profile.rows[0]?.inventory;
     if (inventory?.["resource.wood"] !== 0 || inventory?.["tool.wooden-club"] !== 1) {
       throw new Error(`Gameplay craft did not persist expected inventory for ${requestId}`);
     }
@@ -158,7 +160,7 @@ async function exerciseCraftMutation(socket, user, scenario) {
       "SELECT transaction_id, response FROM craft_requests WHERE request_key=$1",
       [`${user.id}:${requestId}`],
     );
-    const row = ledger.rows[0];
+    row = ledger.rows[0];
     if (!row || row.transaction_id !== result.transactionId || row.response?.recipeId !== "tool.wooden-club") {
       throw new Error(`Gameplay craft transaction was not durably persisted for ${requestId}`);
     }
@@ -171,6 +173,16 @@ async function exerciseCraftMutation(socket, user, scenario) {
     recipeId: "tool.wooden-club",
     transactionId: result.transactionId,
     persisted: true,
+    persistenceEvidence: {
+      inventoryAfter: {
+        "resource.wood": inventory["resource.wood"],
+        "tool.wooden-club": inventory["tool.wooden-club"],
+      },
+      ledger: {
+        transactionId: row.transaction_id,
+        recipeId: row.response.recipeId,
+      },
+    },
   };
 }
 
@@ -214,7 +226,8 @@ async function exerciseGatherMutation(socket, user, node, scenario) {
       "SELECT inventory->>$2 AS quantity FROM player_profiles WHERE user_id=$1",
       [user.id, itemId],
     );
-    if (Number(profile.rows[0]?.quantity ?? 0) < expectedQuantity) {
+    const inventoryQuantity = Number(profile.rows[0]?.quantity ?? 0);
+    if (inventoryQuantity < expectedQuantity) {
       throw new Error(`Gameplay mutation did not persist inventory for ${node.id}`);
     }
     const nodeState = await pool.query(
@@ -225,11 +238,22 @@ async function exerciseGatherMutation(socket, user, node, scenario) {
     if (!depletedUntil || new Date(depletedUntil).getTime() <= Date.now()) {
       throw new Error(`Gameplay mutation did not persist resource depletion for ${node.id}`);
     }
+    node.persistenceEvidence = {
+      inventoryQuantity,
+      depletedUntil: new Date(depletedUntil).toISOString(),
+    };
   } finally {
     await pool.end();
   }
 
-  return { action: "gather_resource", resourceId: node.id, itemId, quantity: expectedQuantity, persisted: true };
+  return {
+    action: "gather_resource",
+    resourceId: node.id,
+    itemId,
+    quantity: expectedQuantity,
+    persisted: true,
+    persistenceEvidence: node.persistenceEvidence,
+  };
 }
 
 async function waitForPong(socket) {
