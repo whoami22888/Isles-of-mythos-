@@ -29,7 +29,7 @@ jobs:
       LOADTEST_HTTP_REQUESTS: 100
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:17-alpine
+        image: dhi.io/postgres:17-alpine3.23@sha256:3379965f6c91805f4dbcfc8ff9acc5998312344660a432a22b3ddea041614498
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -42,19 +42,41 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           package-manager-cache: false
+      - name: Verify pinned PostgreSQL image and signed attestations
+        env:
+          POSTGRES_IMAGE: dhi.io/postgres:17-alpine3.23@sha256:3379965f6c91805f4dbcfc8ff9acc5998312344660a432a22b3ddea041614498
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "$POSTGRES_IMAGE" | tee postgres-image-inspect.txt
+          grep -F "Digest: sha256:3379965f6c91805f4dbcfc8ff9acc5998312344660a432a22b3ddea041614498" postgres-image-inspect.txt
+          docker pull "$POSTGRES_IMAGE"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.4.1
+          curl --fail --silent --show-error --location https://registry.scout.docker/keyring/dhi/latest.pub --output "$RUNNER_TEMP/dhi.pub"
+          "$RUNNER_TEMP/bin/cosign" verify-attestation --key "$RUNNER_TEMP/dhi.pub" --type https://slsa.dev/provenance/v0.2 "$POSTGRES_IMAGE" > postgres-provenance.json
+          "$RUNNER_TEMP/bin/cosign" verify-attestation --key "$RUNNER_TEMP/dhi.pub" --type https://cyclonedx.org/bom/v1.6 "$POSTGRES_IMAGE" > postgres-sbom-attestation.json
+      - name: Scan pinned PostgreSQL image and emit CycloneDX SBOM
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          image-ref: dhi.io/postgres:17-alpine3.23@sha256:3379965f6c91805f4dbcfc8ff9acc5998312344660a432a22b3ddea041614498
+          format: cyclonedx
+          output: postgres.sbom.cdx.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
       - name: Install dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Rebuild reviewed native dependencies
         run: npm rebuild argon2 esbuild
       - name: Migrate database
         run: npm run migrate:up
-      - name: Seed 1,000 player identities
-        run: PGPASSWORD=postgres psql "$DATABASE_URL" -c "INSERT INTO users (username, email, password_hash) SELECT 'loadtest_' || g, 'loadtest_' || g || '@example.invalid', 'loadtest-password-hash' FROM generate_series(0, 999) AS g ON CONFLICT DO NOTHING;"
+      - name: Seed 5,000 player identities
+        run: PGPASSWORD=postgres psql "$DATABASE_URL" -c "INSERT INTO users (username, email, password_hash) SELECT 'loadtest_' || g, 'loadtest_' || g || '@example.invalid', 'loadtest-password-hash' FROM generate_series(0, 4999) AS g ON CONFLICT DO NOTHING;"
       - name: Build
         run: npm run build
       - name: Start server
@@ -77,8 +99,12 @@ jobs:
               sleep 1
             done
           ) > performance-system.log 2>&1 &
-      - name: Run sustained player-load scenarios
+      - name: Self-test persisted-evidence validator
+        run: node scripts/validate-performance-report.mjs --self-test
+      - name: Run sustained player-load and domain stress scenarios
         run: node scripts/sustained-load.mjs
+      - name: Validate persisted gameplay and stress evidence
+        run: node scripts/validate-performance-report.mjs performance-results.json
       - name: Stop server
         if: always()
         run: |
@@ -86,11 +112,15 @@ jobs:
           wait "$(cat server.pid)" 2>/dev/null || true
       - name: Upload acceptance evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: performance-acceptance-evidence
           path: |
             performance-results.json
             performance-system.log
             performance-server.log
-          if-no-files-found: warn
+            postgres-image-inspect.txt
+            postgres-provenance.json
+            postgres-sbom-attestation.json
+            postgres.sbom.cdx.json
+          if-no-files-found: error

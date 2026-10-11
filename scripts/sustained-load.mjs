@@ -19,10 +19,10 @@ async function loadTestUsers() {
     const result = await pool.query(
       "SELECT id, username FROM users WHERE username LIKE 'loadtest_%' ORDER BY username",
     );
-    if (result.rows.length < 1000) {
-      throw new Error(`Expected 1000 seeded load-test users, found ${result.rows.length}`);
+    if (result.rows.length < 5000) {
+      throw new Error(`Expected 5000 seeded load-test users, found ${result.rows.length}`);
     }
-    return result.rows.slice(0, 1000);
+    return result.rows.slice(0, 5000);
   } finally {
     await pool.end();
   }
@@ -256,6 +256,8 @@ async function waitForPong(socket) {
 async function wsLoad(playerCount, users, mutationUser, mutationNode, scenario) {
   const sockets = [];
   const latencies = [];
+  let networkBytesSent = 0;
+  let networkBytesReceived = 0;
   let connected = 0;
   let authenticated = 0;
   let errors = 0;
@@ -274,6 +276,9 @@ async function wsLoad(playerCount, users, mutationUser, mutationNode, scenario) 
     for (let index = 0; index < playerCount; index++) {
       const socket = new WebSocket(wsUrl);
       sockets.push(socket);
+      const originalSend = socket.send.bind(socket);
+      socket.send = (data, ...args) => { networkBytesSent += typeof data === "string" ? Buffer.byteLength(data) : (data?.byteLength ?? data?.length ?? 0); return originalSend(data, ...args); };
+      socket.on("message", raw => { networkBytesReceived += Buffer.isBuffer(raw) ? raw.length : Buffer.byteLength(String(raw)); });
       const started = performance.now();
 
       socket.once("open", () => {
@@ -369,6 +374,8 @@ async function wsLoad(playerCount, users, mutationUser, mutationNode, scenario) 
     p50Ms: percentile(latencies, 0.5),
     p95Ms: percentile(latencies, 0.95),
     p99Ms: percentile(latencies, 0.99),
+    networkBytesSent,
+    networkBytesReceived,
   };
 }
 
@@ -401,6 +408,12 @@ const mutationUser = users[mutationUserIndexes[index]];
   console.log(JSON.stringify(result));
 }
 
-const finalResult = { event: "sustained_load_complete", durationMs, scenarios };
-writeFileSync("performance-results.json", JSON.stringify(finalResult, null, 2));
-console.log(JSON.stringify(finalResult));
+const {runDomainScenarios}=await import("./domain-load-scenarios.mjs");
+const domainScenarios=await runDomainScenarios(users);
+writeFileSync("performance-results.json",JSON.stringify({event:"sustained_load_progress",durationMs,scenarios,domainScenarios},null,2));
+const mr=await fetch(`${baseUrl}/metrics`);if(!mr.ok)throw Error("Metrics endpoint returned "+mr.status);const mt=await mr.text();
+function metricValue(n){const l=mt.split(/\r?\n/).find(x=>x.startsWith(n+" "));return l?Number(l.trim().split(/\s+/)[1]):null;}
+const tc=metricValue("isles_tick_duration_seconds_count"),ts=metricValue("isles_tick_duration_seconds_sum");
+const serverMetrics={tickCount:tc,averageTickMs:tc&&ts!==null?ts*1000/tc:null,residentMemoryBytes:metricValue("isles_process_resident_memory_bytes"),heapUsedBytes:metricValue("isles_process_heap_used_bytes"),cpuUserSeconds:metricValue("isles_process_cpu_user_seconds_total"),cpuSystemSeconds:metricValue("isles_process_cpu_system_seconds_total"),httpRequestsTotal:metricValue("isles_http_requests_total"),httpErrorsTotal:metricValue("isles_http_errors_total"),networkBytesSent:scenarios.reduce((s,x)=>s+x.websocket.networkBytesSent,0),networkBytesReceived:scenarios.reduce((s,x)=>s+x.websocket.networkBytesReceived,0)};
+const finalResult={event:"sustained_load_complete",durationMs,scenarios,domainScenarios,serverMetrics,clientMetrics:{status:"not_measured_in_headless_ci",reason:"Physical-device FPS/frame-time/GPU evidence requires the Android/iOS matrix in Master Build Prompt section 94."}};
+writeFileSync("performance-results.json",JSON.stringify(finalResult,null,2));console.log(JSON.stringify(finalResult));
