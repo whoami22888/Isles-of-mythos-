@@ -144,12 +144,14 @@ async function exerciseCraftMutation(socket, user, scenario) {
   }
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  let inventory;
+  let row;
   try {
     const profile = await pool.query(
       "SELECT inventory FROM player_profiles WHERE user_id=$1",
       [user.id],
     );
-    const inventory = profile.rows[0]?.inventory;
+    inventory = profile.rows[0]?.inventory;
     if (inventory?.["resource.wood"] !== 0 || inventory?.["tool.wooden-club"] !== 1) {
       throw new Error(`Gameplay craft did not persist expected inventory for ${requestId}`);
     }
@@ -158,7 +160,7 @@ async function exerciseCraftMutation(socket, user, scenario) {
       "SELECT transaction_id, response FROM craft_requests WHERE request_key=$1",
       [`${user.id}:${requestId}`],
     );
-    const row = ledger.rows[0];
+    row = ledger.rows[0];
     if (!row || row.transaction_id !== result.transactionId || row.response?.recipeId !== "tool.wooden-club") {
       throw new Error(`Gameplay craft transaction was not durably persisted for ${requestId}`);
     }
