@@ -50,7 +50,7 @@ for(const name of readdirSync(workflowRoot).sort()){
    if(/^\s*#/.test(rawLine))continue;
    const line=rawLine.replace(/\s+#.*$/,"");
    const image=line.match(/^\s*image:\s*(["']?)([^"'#\s]+)\1\s*$/i);
-   const postgresRefs=[...(line.matchAll(/((?:[A-Za-z0-9.-]+\/)*postgres(?::[A-Za-z0-9._-]+|@sha256:[0-9a-f]{64}))/gi))].map(match=>match[1]);
+   const postgresRefs=[...(line.matchAll(/(?:^|[\s"'=])((?:[A-Za-z0-9.-]+\/)*postgres(?::[A-Za-z0-9._-]+|@sha256:[0-9a-f]{64}))/gi))].map(match=>match[1]);
    const refs=image&&/(?:^|\/)postgres(?=[:/@])/i.test(image[2])?[image[2]]:postgresRefs;
    for(const ref of new Set(refs)){
      if(/(?:^|\/)postgres(?=[:/@])/i.test(ref)&&!/postgres-exporter/i.test(ref)&&!/@sha256:[0-9a-f]{64}$/i.test(ref)){
