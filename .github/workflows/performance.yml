@@ -47,6 +47,10 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+        with:
+          cosign-release: v2.4.1
       - name: Verify pinned PostgreSQL image and signed attestations
         env:
           POSTGRES_IMAGE: cgr.dev/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7
@@ -66,18 +70,16 @@ jobs:
           console.log("Pinned PostgreSQL index contains both expected platform manifests.");
           NODE
           docker pull "$POSTGRES_IMAGE"
-          mkdir -p "$RUNNER_TEMP/bin"
-          GOBIN="$RUNNER_TEMP/bin" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.4.1
           COSIGN_IDENTITY="https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main"
           COSIGN_ISSUER="https://token.actions.githubusercontent.com"
           POSTGRES_AMD64_IMAGE="cgr.dev/chainguard/postgres@sha256:17e9772ea0445f2dba3faee359b571c899b89b0fb09098fc38d390dc73f141c0"
           POSTGRES_ARM64_IMAGE="cgr.dev/chainguard/postgres@sha256:a18c38fdfbb5f99f636ad01e34ef0a4468832ddc4ea7e3e329720244462d0930"
-          "$RUNNER_TEMP/bin/cosign" verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-signature-amd64.json
-          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-provenance-amd64.json
-          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-sbom-amd64.json
-          "$RUNNER_TEMP/bin/cosign" verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-signature-arm64.json
-          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-provenance-arm64.json
-          "$RUNNER_TEMP/bin/cosign" verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-sbom-arm64.json
+          cosign verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-signature-amd64.json
+          cosign verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-provenance-amd64.json
+          cosign verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_AMD64_IMAGE" | tee postgres-sbom-amd64.json
+          cosign verify --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-signature-arm64.json
+          cosign verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-provenance-arm64.json
+          cosign verify-attestation --type https://spdx.dev/Document --certificate-identity="$COSIGN_IDENTITY" --certificate-oidc-issuer="$COSIGN_ISSUER" "$POSTGRES_ARM64_IMAGE" | tee postgres-sbom-arm64.json
       - name: Generate CycloneDX SBOM for pinned PostgreSQL image
         env:
           POSTGRES_IMAGE: cgr.dev/chainguard/postgres@sha256:1a417cf464d938b1b1182411416401215af7fbc88395d9b90f7c805e96d639a7
