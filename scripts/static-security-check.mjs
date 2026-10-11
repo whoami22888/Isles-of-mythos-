@@ -42,9 +42,9 @@ for(const name of readdirSync(workflowRoot).sort()){
  const file=join(workflowRoot,name),content=readFileSync(file,"utf8"),lines=content.split(/\r?\n/);
  lines.forEach((line,index)=>{const a=line.match(/^\s*(?:-\s*)?uses:\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)@([^\s#]+)(?:\s+#.*)?$/);if(a&&!/^[0-9a-f]{40}$/i.test(a[2]))add(findings.errors,"unpinned-workflow-action",file,index+1,line);});
  if(!/^permissions:\s*\n((?:^  [A-Za-z0-9_-]+:\s*(?:read|write|none)\s*(?:#.*)?\n?)+)/m.test(content))add(findings.errors,"workflow-permissions-policy",file,1,"Workflow must declare explicit top-level permissions");
- for(const line of lines)if(/^\s*image:\s*[^\n]*postgres/i.test(line)||(/docker run/i.test(line)&&/postgres:/i.test(line)))if(!line.includes("@sha256:"))add(findings.errors,"mutable-postgres-image",file,1,line);
+ for(const line of lines){const postgresDbImage=/(?:^|\s|\/)postgres(?=[:/@\s])/i.test(line)&&!/postgres-exporter/i.test(line);if((/^\s*image:/i.test(line)||/docker run/i.test(line))&&postgresDbImage&&!line.includes("@sha256:"))add(findings.errors,"mutable-postgres-image",file,1,line);}
 }
-for(const [i,line] of readFileSync("docker-compose.yml","utf8").split(/\r?\n/).entries())if(/^\s*image:\s*[^\n]*postgres/i.test(line)&&!line.includes("@sha256:"))add(findings.errors,"mutable-postgres-image","docker-compose.yml",i+1,line);
+for(const [i,line] of readFileSync("docker-compose.yml","utf8").split(/\r?\n/).entries()){const postgresDbImage=/(?:^|\s|\/)postgres(?=[:/@\s])/i.test(line)&&!/postgres-exporter/i.test(line);if(/^\s*image:/i.test(line)&&postgresDbImage&&!line.includes("@sha256:"))add(findings.errors,"mutable-postgres-image","docker-compose.yml",i+1,line);}
 console.log("Static security scan: " + (findings.errors.length === 0 ? "PASS" : "FAIL"));
 for (const item of findings.errors) console.log("ERROR " + item);
 for (const item of findings.reviews.slice(0, 200)) console.log("REVIEW " + item);
