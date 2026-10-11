@@ -162,3 +162,6 @@ The implementation sequence remains:
 BUILD → TEST → INSPECT → FIX → RETEST → VERIFY → DOCUMENT → CONTINUE.
 
 A failing gate always takes priority over new feature work.
+
+
+**Compatibility warning:** this pin selects PostgreSQL 18.6, a major-version change from PostgreSQL 17. Do not accept it unless the exact-image migration, integration, regression and full CI chain passes.
